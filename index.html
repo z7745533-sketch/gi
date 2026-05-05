@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Mobile Neon Runner</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: 'Segoe UI', sans-serif; }
+        #joystick-container {
+            position: absolute; bottom: 50px; left: 50px;
+            width: 120px; height: 120px; background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+        }
+        #joystick-knob {
+            width: 50px; height: 50px; background: #00ffff;
+            border-radius: 50%; box-shadow: 0 0 15px #00ffff;
+        }
+        #score {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #00ffff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #00ffff;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score">PUAN: 0</div>
+    <div id="joystick-container">
+        <div id="joystick-knob"></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- SAHNE VE AYARLAR ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.15);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- IŞIKLANDIRMA ---
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const pointLight = new THREE.PointLight(0x00ffff, 2, 10);
+        scene.add(pointLight);
+
+        // --- OYUNCU (NEON KÜP) ---
+        const playerGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+        const playerMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.5 });
+        const player = new THREE.Mesh(playerGeo, playerMat);
+        scene.add(player);
+
+        // --- ZEMİN (SONSUZ YOL HİSSİ) ---
+        const grid = new THREE.GridHelper(200, 100, 0xff00ff, 0x220022);
+        grid.position.y = -0.5;
+        scene.add(grid);
+
+        camera.position.set(0, 2, 4);
+        camera.lookAt(0, 0, 0);
+
+        // --- MOBİL JOYSTICK MANTIĞI ---
+        const knob = document.getElementById('joystick-knob');
+        let moveX = 0, moveZ = 0;
+        let isMoving = false;
+
+        window.addEventListener('touchstart', (e) => { isMoving = true; });
+        window.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            const rect = document.getElementById('joystick-container').getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const maxDist = 40;
+
+            if (dist > maxDist) {
+                dx *= maxDist / dist;
+                dy *= maxDist / dist;
+            }
+
+            knob.style.transform = `translate(${dx}px, ${dy}px)`;
+            moveX = dx / maxDist;
+            moveZ = dy / maxDist;
+        });
+
+        window.addEventListener('touchend', () => {
+            isMoving = false;
+            knob.style.transform = `translate(0px, 0px)`;
+            moveX = 0; moveZ = 0;
+        });
+
+        // --- OYUN DÖNGÜSÜ ---
+        let score = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Hareket
+            player.position.x += moveX * 0.1;
+            player.position.z += moveZ * 0.1;
+
+            // Zemin kaydırma (Sonsuzluk hissi)
+            grid.position.z += 0.2;
+            if (grid.position.z > 2) grid.position.z = 0;
+
+            // Kamera takibi
+            camera.position.lerp(new THREE.Vector3(player.position.x, player.position.y + 2, player.position.z + 4), 0.1);
+            pointLight.position.copy(player.position);
+
+            // Puan artışı
+            score++;
+            if(score % 10 === 0) document.getElementById('score').innerText = `PUAN: ${Math.floor(score/10)}`;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
