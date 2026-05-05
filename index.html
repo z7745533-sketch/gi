@@ -3,32 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Mobile Neon Runner</title>
+    <title>3D Uzayda Hayatta Kal</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: 'Segoe UI', sans-serif; }
-        #joystick-container {
-            position: absolute; bottom: 50px; left: 50px;
-            width: 120px; height: 120px; background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            border: 2px solid rgba(0, 255, 255, 0.3);
-        }
-        #joystick-knob {
-            width: 50px; height: 50px; background: #00ffff;
-            border-radius: 50%; box-shadow: 0 0 15px #00ffff;
-        }
-        #score {
+        body { margin: 0; overflow: hidden; background: #050505; touch-action: none; font-family: sans-serif; }
+        #ui {
             position: absolute; top: 20px; width: 100%; text-align: center;
-            color: #00ffff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #00ffff;
-            pointer-events: none;
+            color: #fff; pointer-events: none; text-shadow: 0 0 10px #ff0000;
+        }
+        #joystick {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%;
+            border: 2px solid #555;
+        }
+        #knob {
+            width: 40px; height: 40px; background: #ff3300; border-radius: 50%;
+            position: absolute; top: 30px; left: 30px; box-shadow: 0 0 20px #ff3300;
         }
     </style>
 </head>
 <body>
 
-    <div id="score">PUAN: 0</div>
-    <div id="joystick-container">
-        <div id="joystick-knob"></div>
+    <div id="ui">
+        <h2 id="msg">METEORLARDAN KAÇ!</h2>
+        <div id="score">PUAN: 0</div>
     </div>
+    <div id="joystick"><div id="knob"></div></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -37,100 +36,112 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- SAHNE VE AYARLAR ---
+        // --- SAHNE KURULUMU ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.15);
-        
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- IŞIKLANDIRMA ---
-        const ambientLight = new THREE.AmbientLight(0x404040);
-        scene.add(ambientLight);
-        const pointLight = new THREE.PointLight(0x00ffff, 2, 10);
-        scene.add(pointLight);
+        // --- UÇAK TASARIMI (Gövde + Kanatlar) ---
+        const shipGroup = new THREE.Group();
+        
+        // Gövde
+        const bodyGeo = new THREE.ConeGeometry(0.3, 1.2, 8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.rotation.x = Math.PI / 2;
+        shipGroup.add(body);
 
-        // --- OYUNCU (NEON KÜP) ---
-        const playerGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-        const playerMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.5 });
-        const player = new THREE.Mesh(playerGeo, playerMat);
-        scene.add(player);
+        // Kanatlar
+        const wingGeo = new THREE.BoxGeometry(1.5, 0.05, 0.4);
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const wings = new THREE.Mesh(wingGeo, wingMat);
+        shipGroup.add(wings);
 
-        // --- ZEMİN (SONSUZ YOL HİSSİ) ---
-        const grid = new THREE.GridHelper(200, 100, 0xff00ff, 0x220022);
-        grid.position.y = -0.5;
-        scene.add(grid);
+        scene.add(shipGroup);
 
-        camera.position.set(0, 2, 4);
-        camera.lookAt(0, 0, 0);
+        // --- IŞIKLAR ---
+        const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+        sun.position.set(5, 10, 5);
+        scene.add(sun);
+        scene.add(new THREE.AmbientLight(0x333333));
 
-        // --- MOBİL JOYSTICK MANTIĞI ---
-        const knob = document.getElementById('joystick-knob');
-        let moveX = 0, moveZ = 0;
-        let isMoving = false;
+        // --- METEOR SİSTEMİ ---
+        const meteors = [];
+        const meteorGeo = new THREE.DodecahedronGeometry(0.5, 0);
+        const meteorMat = new THREE.MeshStandardMaterial({ color: 0x664422 });
 
-        window.addEventListener('touchstart', (e) => { isMoving = true; });
+        function createMeteor() {
+            const m = new THREE.Mesh(meteorGeo, meteorMat);
+            m.position.set((Math.random() - 0.5) * 10, 0, -20);
+            m.rotation.set(Math.random(), Math.random(), Math.random());
+            scene.add(m);
+            meteors.push(m);
+        }
+
+        // --- KONTROLLER ---
+        let moveX = 0;
+        const knob = document.getElementById('knob');
         window.addEventListener('touchmove', (e) => {
             const touch = e.touches[0];
-            const rect = document.getElementById('joystick-container').getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            
-            let dx = touch.clientX - centerX;
-            let dy = touch.clientY - centerY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            const maxDist = 40;
-
-            if (dist > maxDist) {
-                dx *= maxDist / dist;
-                dy *= maxDist / dist;
-            }
-
-            knob.style.transform = `translate(${dx}px, ${dy}px)`;
-            moveX = dx / maxDist;
-            moveZ = dy / maxDist;
+            const rect = document.getElementById('joystick').getBoundingClientRect();
+            let dx = touch.clientX - (rect.left + 50);
+            dx = Math.max(-40, Math.min(40, dx));
+            knob.style.left = (30 + dx) + "px";
+            moveX = dx / 40;
         });
-
         window.addEventListener('touchend', () => {
-            isMoving = false;
-            knob.style.transform = `translate(0px, 0px)`;
-            moveX = 0; moveZ = 0;
+            knob.style.left = "30px";
+            moveX = 0;
         });
 
         // --- OYUN DÖNGÜSÜ ---
         let score = 0;
+        let gameOver = false;
+
         function animate() {
+            if (gameOver) return;
             requestAnimationFrame(animate);
 
-            // Hareket
-            player.position.x += moveX * 0.1;
-            player.position.z += moveZ * 0.1;
+            // Gemi hareketi (Sınırlandırılmış)
+            shipGroup.position.x += moveX * 0.15;
+            shipGroup.position.x = Math.max(-4.5, Math.min(4.5, shipGroup.position.x));
+            shipGroup.rotation.z = -moveX * 0.5; // Dönüş efekti
 
-            // Zemin kaydırma (Sonsuzluk hissi)
-            grid.position.z += 0.2;
-            if (grid.position.z > 2) grid.position.z = 0;
+            // Meteorları hareket ettir
+            if (Math.random() < 0.05) createMeteor();
+            
+            for (let i = meteors.length - 1; i >= 0; i--) {
+                meteors[i].position.z += 0.2;
+                meteors[i].rotation.x += 0.02;
 
-            // Kamera takibi
-            camera.position.lerp(new THREE.Vector3(player.position.x, player.position.y + 2, player.position.z + 4), 0.1);
-            pointLight.position.copy(player.position);
+                // Çarpışma Testi
+                const dist = shipGroup.position.distanceTo(meteors[i].position);
+                if (dist < 0.7) {
+                    document.getElementById('msg').innerText = "EYVAH! ÇARPTIN!";
+                    gameOver = true;
+                    setTimeout(() => location.reload(), 2000);
+                }
 
-            // Puan artışı
-            score++;
-            if(score % 10 === 0) document.getElementById('score').innerText = `PUAN: ${Math.floor(score/10)}`;
+                // Ekrandan çıkanları sil
+                if (meteors[i].position.z > 5) {
+                    scene.remove(meteors[i]);
+                    meteors.splice(i, 1);
+                    score++;
+                    document.getElementById('score').innerText = `PUAN: ${score}`;
+                }
+            }
 
+            camera.position.x = shipGroup.position.x * 0.5;
+            camera.lookAt(shipGroup.position);
             renderer.render(scene, camera);
         }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
+        camera.position.set(0, 3, 6);
         animate();
     </script>
 </body>
 </html>
+
+         
